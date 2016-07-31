@@ -31,7 +31,13 @@ namespace Donker.ConsoleUtils.PasswordBuilders
         /// <summary>
         /// Removes the last character from the current password.
         /// </summary>
-        public void Backspace() => _stringBuilder.Remove(_stringBuilder.Length - 1, 1);
+        public void Backspace()
+        {
+            if (_stringBuilder.Length == 0)
+                return;
+
+            _stringBuilder.Remove(_stringBuilder.Length - 1, 1);
+        }
 
         /// <summary>
         /// Returns the fully built password.
