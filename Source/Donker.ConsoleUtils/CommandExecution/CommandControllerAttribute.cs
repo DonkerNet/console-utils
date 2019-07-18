@@ -32,5 +32,10 @@ namespace Donker.ConsoleUtils.CommandExecution
         /// Gets or sets if routes should be compared with or without case sensitivity. Default is <c>false</c>.
         /// </summary>
         public bool CaseSensitiveRouting { get; set; }
+
+        /// <summary>
+        /// Gets or sets if a new instance of the controller should be created each time a command is executed. Default is <c>false</c>.
+        /// </summary>
+        public bool InstantiatePerExecutedCommand { get; set; }
     }
 }

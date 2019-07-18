@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Donker.ConsoleUtils.IoC;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -11,10 +12,10 @@ namespace Donker.ConsoleUtils.CommandExecution
     /// </summary>
     public class CommandService
     {
+        private readonly IDependencyResolver _dependencyResolver;
         private readonly List<Type> _registeredControllerTypes;
         private readonly List<CommandData> _commandDataCollection;
         private readonly Dictionary<Type, ICommandArgumentParser> _argumentParsers;
-
         private readonly object _syncRoot;
 
         private object _lastResult;
@@ -25,10 +26,13 @@ namespace Donker.ConsoleUtils.CommandExecution
         public event EventHandler<CommandServiceEventArgs> Exit;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="CommandService"/> class.
+        /// Initializes a new instance of the <see cref="CommandService"/> class, where the specified dependency resolver is used for instantiating controllers.
         /// </summary>
-        public CommandService()
+        /// <param name="dependencyResolver">The depedency resolver used when instantiating controllers.</param>
+        public CommandService(IDependencyResolver dependencyResolver)
         {
+            _dependencyResolver = dependencyResolver;
+
             _registeredControllerTypes = new List<Type>();
             _commandDataCollection = new List<CommandData>();
             _argumentParsers = new Dictionary<Type, ICommandArgumentParser>();
@@ -37,20 +41,27 @@ namespace Donker.ConsoleUtils.CommandExecution
         }
 
         /// <summary>
-        /// Maps <see cref="CommandControllerBase"/> methods, using the <see cref="CommandAttribute"/> attribute, to their respective routes.
+        /// Initializes a new instance of the <see cref="CommandService"/> class.
         /// </summary>
-        /// <param name="controller">The <see cref="CommandControllerBase"/> instance containing the methods to register.</param>
+        public CommandService()
+            : this(null)
+        {
+        }
+
+        /// <summary>
+        /// Maps the methods of the given <see cref="CommandControllerBase" /> instance to their respective methods, using the <see cref="CommandAttribute" /> attribute.
+        /// Ignores the <see cref="CommandControllerAttribute.InstantiatePerExecutedCommand" /> setting and reuses the given <see cref="CommandControllerBase" /> instance for each command.
+        /// </summary>
+        /// <param name="controller">The <see cref="CommandControllerBase" /> containing the methods to register.</param>
         /// <exception cref="ArgumentNullException"><paramref name="controller"/> is <c>null</c>.</exception>
-        /// <exception cref="ArgumentException">A controller of the same type has already been registered.</exception>
-        /// <exception cref="FormatException">Multiple route arguments need to be separated from each other.</exception>
-        public void RegisterController(CommandControllerBase controller)
+        public void RegisterControllerConstant(CommandControllerBase controller)
         {
             if (controller == null)
                 throw new ArgumentNullException(nameof(controller), "'controller' cannot be null.");
 
             lock (_syncRoot)
             {
-                RegisterControllerInternal(controller);
+                RegisterControllerInternal(controller.GetType(), controller);
             }
         }
 
@@ -70,11 +81,9 @@ namespace Donker.ConsoleUtils.CommandExecution
             if (!typeof(CommandControllerBase).IsAssignableFrom(controllerType))
                 throw new ArgumentException("'controllerType' needs to implement the CommandControllerBase class.");
 
-            CommandControllerBase controller = (CommandControllerBase)Activator.CreateInstance(controllerType);
-
             lock (_syncRoot)
             {
-                RegisterControllerInternal(controller);
+                RegisterControllerInternal(controllerType, null);
             }
         }
 
@@ -83,13 +92,11 @@ namespace Donker.ConsoleUtils.CommandExecution
         /// </summary>
         /// <typeparam name="T">The type of the <see cref="CommandControllerBase"/> to register.</typeparam>
         public void RegisterController<T>()
-            where T : CommandControllerBase, new()
+            where T : CommandControllerBase
         {
-            CommandControllerBase controller = new T();
-
             lock (_syncRoot)
             {
-                RegisterControllerInternal(controller);
+                RegisterControllerInternal(typeof(T), null);
             }
         }
 
@@ -117,10 +124,7 @@ namespace Donker.ConsoleUtils.CommandExecution
             lock (_syncRoot)
             {
                 foreach (Type siblingControllerType in controllerTypes)
-                {
-                    CommandControllerBase siblingController = (CommandControllerBase)Activator.CreateInstance(siblingControllerType);
-                    RegisterControllerInternal(siblingController);
-                }
+                    RegisterControllerInternal(siblingControllerType, null);
             }
         }
 
@@ -148,7 +152,7 @@ namespace Donker.ConsoleUtils.CommandExecution
                 {
                     foreach (CommandData commandData in _commandDataCollection)
                     {
-                        if (commandData.ControllerInstance.GetType() != controllerType)
+                        if (commandData.ControllerType != controllerType)
                             continue;
 
                         StringBuilder routeBuilder = new StringBuilder();
@@ -337,7 +341,15 @@ namespace Donker.ConsoleUtils.CommandExecution
                             }
                         }
 
-                        CommandControllerBase controller = commandData.ControllerInstance;
+                        CommandControllerBase controller = null;
+
+                        if (commandData.InstantiatePerExecutedCommand)
+                            controller = InstantiateController(commandData.ControllerType);
+                        else if (commandData.ControllerInstance == null)
+                            commandData.ControllerInstance = controller = InstantiateController(commandData.ControllerType);
+                        else
+                            controller = commandData.ControllerInstance;
+
                         controller.CommandServiceInternal = this;
                         controller.CommandLineInternal = commandLine;
                         controller.LastResultInternal = _lastResult;
@@ -348,7 +360,7 @@ namespace Donker.ConsoleUtils.CommandExecution
                         }
                         catch (Exception ex)
                         {
-                            throw new CommandException("An error occure while executing the command method.", commandLine, CommandErrorCode.CommandError, ex);
+                            throw new CommandException("An error occured while executing the command method.", commandLine, CommandErrorCode.CommandError, ex);
                         }
 
                         return new CommandResult(_lastResult, controller.GetType(), commandData.Method);
@@ -386,15 +398,16 @@ namespace Donker.ConsoleUtils.CommandExecution
             exitEventHandler?.Invoke(this, new CommandServiceEventArgs(this, controller));
         }
 
-        private void RegisterControllerInternal(CommandControllerBase controller)
+        private void RegisterControllerInternal(Type controllerType, CommandControllerBase controller)
         {
-            Type controllerType = controller.GetType();
-
             if (_registeredControllerTypes.Contains(controllerType))
-                throw new ArgumentException("A controller of the same type has already been registered.", nameof(controller));
+                throw new ArgumentException("A controller of the same type has already been registered.", nameof(controllerType));
+            if (_dependencyResolver == null && !controllerType.GetConstructors().Any(c => c.GetParameters().Length == 0))
+                throw new ArgumentException("The type of controller does not have a parameterless constructor and no dependency controller is used for this service.", nameof(controllerType));
 
             string prefix = string.Empty;
             bool controllerCaseSensitive = false;
+            bool instantiatePerCommand = false;
 
             CommandControllerAttribute controllerAttribute = controllerType.GetCustomAttributes(typeof(CommandControllerAttribute), true).FirstOrDefault() as CommandControllerAttribute;
 
@@ -402,6 +415,7 @@ namespace Donker.ConsoleUtils.CommandExecution
             {
                 prefix = controllerAttribute.Prefix;
                 controllerCaseSensitive = controllerAttribute.CaseSensitiveRouting;
+                instantiatePerCommand = controller == null ? controllerAttribute.InstantiatePerExecutedCommand : false;
             }
 
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
@@ -420,6 +434,8 @@ namespace Donker.ConsoleUtils.CommandExecution
                             .Select(p => new CommandArgument { Name = p.Name, Type = p.ParameterType })
                             .ToList(),
                         CaseSensitive = attribute.IsCaseSensitiveRoutingSet ? attribute.CaseSensitiveRouting : controllerCaseSensitive,
+                        InstantiatePerExecutedCommand = instantiatePerCommand,
+                        ControllerType = controllerType,
                         ControllerInstance = controller,
                         Method = method,
                         RouteParts = CommandRouteParser.GetRouteParts(fullRoute),
@@ -439,6 +455,24 @@ namespace Donker.ConsoleUtils.CommandExecution
                 throw new ArgumentException("An argument parser of the same type has already been added.", nameof(argumentParser));
 
             _argumentParsers.Add(argumentParser.ResultType, argumentParser);
+        }
+
+        private CommandControllerBase InstantiateController(Type controllerType)
+        {
+            if (_dependencyResolver == null)
+                return (CommandControllerBase)Activator.CreateInstance(controllerType);
+
+            object instanceObj = _dependencyResolver.GetService(controllerType);
+
+            if (instanceObj == null)
+                throw new ArgumentException($"Unable to resolve a controller of type '{controllerType}'.", nameof(controllerType));
+
+            CommandControllerBase instance = instanceObj as CommandControllerBase;
+
+            if (instance == null)
+                throw new ArgumentException($"The resolved controller of type '{controllerType}' does not implement the .", nameof(controllerType));
+
+            return instance;
         }
     }
 }

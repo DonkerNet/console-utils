@@ -61,6 +61,7 @@
     <Compile Include="ConsoleEx\Read.cs" />
     <Compile Include="ConsoleEx\ReadPassword.cs" />
     <Compile Include="ConsoleEx\Write.cs" />
+    <Compile Include="IoC\IDependencyResolver.cs" />
     <Compile Include="PasswordBuilders\IPasswordBuilder.cs" />
     <Compile Include="PasswordBuilders\PasswordBuilder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

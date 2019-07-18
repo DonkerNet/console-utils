@@ -7,7 +7,7 @@ namespace Donker.ConsoleUtils.Examples.Loaders
     {
         public static void Load(CommandService commandService)
         {
-            commandService.RegisterController<HelpController>();
+            commandService.RegisterControllerConstant(new HelpController());
             commandService.RegisterController<GreetingController>();
             commandService.RegisterController<PasswordController>();
             commandService.RegisterController<AgeController>();

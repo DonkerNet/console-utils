@@ -48,6 +48,7 @@
     <Compile Include="Controllers\AgeController.cs" />
     <Compile Include="Controllers\GreetingController.cs" />
     <Compile Include="Controllers\PasswordController.cs" />
+    <Compile Include="IoC\ExampleDependencyResolver.cs" />
     <Compile Include="Loaders\ArgumentParserLoader.cs" />
     <Compile Include="Loaders\ControllerLoader.cs" />
     <Compile Include="ArgumentParsers\NameValueCollectionArgumentParser.cs" />

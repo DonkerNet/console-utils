@@ -4,8 +4,15 @@ using Donker.ConsoleUtils.CommandExecution;
 
 namespace Donker.ConsoleUtils.Examples.Controllers
 {
+    // Each execution of a command wil create a new instance of this controller
+    [CommandController(InstantiatePerExecutedCommand = true)]
     public class AgeController : CommandControllerBase
     {
+        public AgeController(string name) // We resolve this using a custom dependency resolver
+        {
+            Console.WriteLine("[A new instance of the {0} has been created.]", name);
+        }
+
         // The 'collection' parameter is automatically converted by the custom NameValueCollectionArgumentParser
         [Command("Set ages: {collection}")]
         public NameValueCollection Set(NameValueCollection collection)

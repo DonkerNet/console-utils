@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Diagnostics;
 using Donker.ConsoleUtils.CommandExecution;
+using Donker.ConsoleUtils.Examples.IoC;
 using Donker.ConsoleUtils.Examples.Loaders;
+using Donker.ConsoleUtils.IoC;
 
 namespace Donker.ConsoleUtils.Examples
 {
@@ -17,8 +19,11 @@ namespace Donker.ConsoleUtils.Examples
 
             _canRun = true;
 
-            // Create the command service that's responsible for all the magic
-            CommandService commandService = new CommandService();
+            // Create a dependency resolver 
+            IDependencyResolver dependencyResolver = new ExampleDependencyResolver();
+
+            // Create the command service that's responsible for all the magic, using a custom dependency resolver for creating controller instances
+            CommandService commandService = new CommandService(dependencyResolver);
 
             // When the CommandControllerBase.Exit() method is called from within a controller, the input loop should stop so the application can exit
             commandService.Exit += (sender, args) => _canRun = false;
